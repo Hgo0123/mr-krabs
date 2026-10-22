@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tests — Budget</title>
+  <style>
+    body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; background: #f5f2ec; color: #1c1a17; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    #summary { font-weight: 600; margin: 0 0 16px; }
+    .ok { color: #1e8a4c; } .ko { color: #c8412f; }
+    section { margin-bottom: 16px; }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    ul { margin: 0; padding-left: 20px; }
+    code { font-size: 13px; }
+    @media (prefers-color-scheme: dark) { body { background: #121110; color: #f2eee7; } .ok { color: #4cc27a; } .ko { color: #ff6b57; } }
+  </style>
+</head>
+<body>
+  <h1>Tests des fonctions de calcul</h1>
+  <p id="summary"></p>
+  <div id="out"></div>
+
+  <script src="calc.js"></script>
+  <script src="storage.js"></script>
+  <script>
+    'use strict';
+    const C = window.Calc;
+    const results = [];
+    let group = null;
+
+    function describe(name, fn) {
+      group = { name, cases: [] };
+      results.push(group);
+      try { fn(); } catch (e) { group.cases.push({ ok: false, msg: 'Exception : ' + e.message }); }
+    }
+    function eq(actual, expected, msg) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      group.cases.push({ ok, msg: ok ? msg : `${msg} — attendu ${JSON.stringify(expected)}, obtenu ${JSON.stringify(actual)}` });
+    }
+    function near(actual, expected, msg, eps = 1e-6) {
+      const ok = Math.abs(actual - expected) < eps;
+      group.cases.push({ ok, msg: ok ? msg : `${msg} — attendu ${expected}, obtenu ${actual}` });
+    }
+    function throws(fn, msg) {
+      let ok = false;
+      try { fn(); } catch { ok = true; }
+      group.cases.push({ ok, msg });
+    }
+    const exp = (date, euros, tagId = 'food') => ({ id: date + '-' + euros + Math.random(), date, amount: Math.round(euros * 100), tagId });
+
+    describe('Semaines d’octobre 2026 (commence un jeudi)', () => {
+      eq(C.getWeeks(2026, 10).map((w) => [w.start, w.end]), [[1, 4], [5, 11], [12, 18], [19, 25], [26, 31]], 'découpage 1→4, 5→11, 12→18, 19→25, 26→31');
+      eq(C.getWeeks(2026, 10).map((w) => w.days), [4, 7, 7, 7, 6], 'nombre de jours par semaine');
+    });
+
+    describe('Exemple du brief : 800 €, lundi 19 octobre, 500 € dépensés du 1er au 18', () => {
+      const expenses = [exp('2026-10-02', 200), exp('2026-10-10', 150), exp('2026-10-18', 150)];
+      const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-19' });
+      const cur = r.currentWeek;
+      eq([cur.start, cur.end], [19, 25], 'la semaine en cours est 19→25');
+      near(cur.planned, 30000 * 7 / 13, 'prévu = 300 × 7 / 13');
+      eq(C.formatEuros(cur.planned), C.formatEuros(16154), 'affiché 161,54 €');
+      eq(Math.round(cur.remaining), 16154, 'reste de la semaine = 161,54 €');
+      eq(cur.daysLeftInWeek, 7, '7 jours restants dans la semaine');
+      eq(Math.round(cur.perDay), 2308, 'environ 23,08 € par jour');
+      eq(r.remaining, 30000, 'reste du mois = 300 €');
+      eq(r.weeks.map((w) => w.status), ['past', 'past', 'past', 'current', 'future'], 'statuts des semaines');
+      near(r.weeks[4].planned, 30000 - 30000 * 7 / 13, 'semaine future = reste après la semaine en cours');
+      const sumPast = r.weeks.slice(0, 3).reduce((s, w) => s + w.spent, 0);
+      eq(sumPast, 50000, 'dépenses des semaines passées = 500 €');
+    });
+
+    describe('Reste réparti : prévu des semaines passées', () => {
+      const expenses = [exp('2026-10-02', 100)];
+      const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-20' });
+      near(r.weeks[0].planned, 80000 * 4 / 31, 'semaine 1 : 800 × 4 / 31');
+      near(r.weeks[1].planned, 70000 * 7 / 27, 'semaine 2 : (800 − 100) × 7 / 27');
+      near(r.weeks[1].remaining, 70000 * 7 / 27, 'semaine 2 : rien dépensé, écart = prévu');
+    });
+
+    describe('Mois qui commence un lundi (juin 2026)', () => {
+      eq(C.weekdayIndex(2026, 6, 1), 0, 'le 1er juin 2026 est un lundi');
+      const weeks = C.getWeeks(2026, 6);
+      eq(weeks.map((w) => [w.start, w.end]), [[1, 7], [8, 14], [15, 21], [22, 28], [29, 30]], 'semaines 1→7 … 29→30');
+      const r = C.computeMonth({ budget: 60000, expenses: [], year: 2026, month: 6, today: '2026-06-01' });
+      near(r.currentWeek.planned, 60000 * 7 / 30, 'premier jour : prévu = 600 × 7 / 30 = 140 €');
+      near(r.currentWeek.perDay, 2000, '20 € par jour');
+      const total = r.weeks.reduce((s, w) => s + w.planned, 0);
+      near(total, 60000, 'la somme des prévus vaut le budget');
+    });
+
+    describe('Mois dépassé', () => {
+      const expenses = [exp('2026-10-03', 600), exp('2026-10-12', 300)];
+      const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-20' });
+      eq(r.remaining, -10000, 'reste du mois = −100 €');
+      eq(C.formatEuros(-r.remaining), C.formatEuros(10000), 'dépassement affiché 100,00 €');
+      eq(r.currentWeek.planned, 0, 'semaine en cours : prévu 0 €');
+      eq(r.weeks[4].planned, 0, 'semaine suivante : prévu 0 €');
+      near(r.weeks[2].planned, 20000 * 7 / 20, 'semaine 12→18 : (800 − 600) × 7 / 20 = 70 €');
+      near(r.weeks[2].remaining, 7000 - 30000, 'semaine 12→18 dépassée de 230 €');
+
+      const r2 = C.computeMonth({ budget: 80000, expenses: [exp('2026-10-05', 500), exp('2026-10-19', 200)], year: 2026, month: 10, today: '2026-10-19' });
+      near(r2.currentWeek.remaining, 30000 * 7 / 13 - 20000, 'semaine en cours dépassée : 161,54 − 200 = −38,46 €');
+      eq(r2.currentWeek.remaining < 0, true, 'resteSemaine < 0');
+    });
+
+    describe('Mois vide', () => {
+      const r = C.computeMonth({ budget: 80000, expenses: [], year: 2026, month: 10, today: '2026-10-22' });
+      eq(r.spent, 0, 'total dépensé 0');
+      eq(r.remaining, 80000, 'reste = budget');
+      eq(r.byDay.every((d) => d.total === 0), true, 'aucun jour avec dépense');
+      const t = C.totalsByTag([], [], 2026, 10);
+      eq([t.total, t.rows.length], [0, 0], 'stats vides');
+    });
+
+    describe('Mois passé et mois futur', () => {
+      const past = C.computeMonth({ budget: 80000, expenses: [], year: 2026, month: 9, today: '2026-10-22' });
+      eq(past.weeks.every((w) => w.status === 'past'), true, 'septembre : toutes les semaines passées');
+      eq(past.currentWeek, null, 'pas de semaine en cours');
+      const fut = C.computeMonth({ budget: 80000, expenses: [], year: 2026, month: 11, today: '2026-10-22' });
+      eq(fut.weeks.every((w) => w.status === 'future'), true, 'novembre : toutes les semaines futures');
+      near(fut.weeks.reduce((s, w) => s + w.planned, 0), 80000, 'somme des prévus = budget');
+    });
+
+    describe('Dépenses hors du mois ignorées', () => {
+      const expenses = [exp('2026-09-30', 50), exp('2026-10-01', 10), exp('2026-11-01', 70)];
+      const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-22' });
+      eq(r.spent, 1000, 'seulement 10 € comptés en octobre');
+    });
+
+    describe('Budget du mois', () => {
+      const data = { defaultBudget: 80000, monthlyBudgets: { '2026-10': 75000, '2026-11': 0 } };
+      eq(C.budgetForMonth(data, '2026-10'), 75000, 'budget spécifique');
+      eq(C.budgetForMonth(data, '2026-12'), 80000, 'budget par défaut');
+      eq(C.budgetForMonth(data, '2026-11'), 0, 'un budget à 0 € reste un budget spécifique');
+    });
+
+    describe('Saisie et affichage des montants', () => {
+      eq(C.parseAmount('12,50'), 1250, '"12,50" → 1250');
+      eq(C.parseAmount('12.5'), 1250, '"12.5" → 1250');
+      eq(C.parseAmount('7'), 700, '"7" → 700');
+      eq(C.parseAmount('0,99'), 99, '"0,99" → 99');
+      eq(C.parseAmount(',5'), 50, '",5" → 50');
+      eq(C.parseAmount('12,'), 1200, '"12," → 1200');
+      eq(C.parseAmount('0'), null, '"0" refusé');
+      eq(C.parseAmount(''), null, 'vide refusé');
+      eq(C.parseAmount('1,234'), null, 'trois décimales refusées');
+      eq(C.parseAmount('abc'), null, 'texte refusé');
+      eq(C.parseAmount('-3'), null, 'négatif refusé');
+      eq(C.parseAmount('0.1') + C.parseAmount('0.2'), 30, 'pas d’erreur d’arrondi');
+      eq(C.formatEuros(1250).replace(/\s/g, ' '), '12,50 €', '1250 → "12,50 €"');
+      eq(C.formatEuros(123456).replace(/\s/g, ' '), '1 234,56 €', 'séparateur de milliers');
+      eq(C.centsToInput(1250), '12,50', 'centsToInput(1250)');
+      eq(C.centsToInput(1200), '12', 'centsToInput(1200)');
+      eq(C.formatEuros(-0.4).replace(/\s/g, ' '), '0,00 €', 'pas de "−0,00 €"');
+    });
+
+    describe('Libellés', () => {
+      eq(C.monthLabel(2026, 10), 'Octobre 2026', 'titre du mois');
+      eq(C.weekLabel(10, { start: 19, end: 25 }), '19 → 25 oct.', 'libellé de semaine');
+      eq(C.dayLabel('2026-10-19'), 'Lundi 19 octobre', 'libellé de jour');
+      eq(C.addMonths(2026, 12, 1), { y: 2027, m: 1 }, 'décembre + 1');
+      eq(C.addMonths(2026, 1, -1), { y: 2025, m: 12 }, 'janvier − 1');
+    });
+
+    describe('Stockage : validation et aller-retour export/import', () => {
+      const S = window.Store;
+      const d = S.defaultData();
+      d.monthlyBudgets['2026-10'] = 75000;
+      d.expenses.push({ id: 'a', date: '2026-10-19', amount: 1250, tagId: 'food', createdAt: '2026-10-19T12:31:00Z' });
+      const back = S.parse(S.serialize(d));
+      eq(back, d, 'serialize puis parse redonne les mêmes données');
+      throws(() => S.parse('pas du json'), 'JSON invalide refusé');
+      throws(() => S.parse('{"version":1,"defaultBudget":"800","tags":[],"expenses":[]}'), 'budget non entier refusé');
+      throws(() => S.parse(JSON.stringify({ ...d, version: 99 })), 'version future refusée');
+      throws(() => S.parse(JSON.stringify({ ...d, expenses: [{ id: 'x', date: '2026-10-1', amount: 5, tagId: 'food' }] })), 'date mal formée refusée');
+      const noOther = S.parse(JSON.stringify({ ...d, tags: d.tags.filter((t) => t.id !== 'other') }));
+      eq(noOther.tags.some((t) => t.id === 'other'), true, 'le tag « Autre » est recréé s’il manque');
+      const orphan = S.parse(JSON.stringify({ ...d, expenses: [{ id: 'y', date: '2026-10-02', amount: 5, tagId: 'ghost' }] }));
+      eq(orphan.expenses[0].tagId, 'other', 'une dépense au tag inconnu passe dans « Autre »');
+      const brief = S.parse(JSON.stringify({ version: 1, defaultBudget: 80000, monthlyBudgets: { '2026-10': 75000 }, tags: d.tags, expenses: [] }));
+      eq(brief.defaultBudget, 80000, 'le format exact du brief est accepté');
+    });
+
+    // Affichage des résultats
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    for (const g of results) {
+      const sec = document.createElement('section');
+      const h = document.createElement('h2');
+      h.textContent = g.name;
+      const ul = document.createElement('ul');
+      for (const c of g.cases) {
+        c.ok ? pass++ : fail++;
+        const li = document.createElement('li');
+        li.className = c.ok ? 'ok' : 'ko';
+        li.textContent = (c.ok ? '✓ ' : '✗ ') + c.msg;
+        ul.appendChild(li);
+      }
+      sec.append(h, ul);
+      out.appendChild(sec);
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = fail ? `${fail} échec(s) sur ${pass + fail} tests` : `${pass} tests réussis`;
+    summary.className = fail ? 'ko' : 'ok';
+    document.title = (fail ? '✗ ' : '✓ ') + document.title;
+  </script>
+</body>
+</html>
