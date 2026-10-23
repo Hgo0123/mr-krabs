@@ -54,29 +54,26 @@
       eq(C.getWeeks(2026, 10).map((w) => w.days), [4, 7, 7, 7, 6], 'nombre de jours par semaine');
     });
 
-    describe('Exemple du brief : 800 €, lundi 19 octobre, 500 € dépensés du 1er au 18', () => {
+    describe('Budget fixe : 800 €, lundi 19 octobre, 500 € dépensés du 1er au 18', () => {
       const expenses = [exp('2026-10-02', 200), exp('2026-10-10', 150), exp('2026-10-18', 150)];
       const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-19' });
       const cur = r.currentWeek;
       eq([cur.start, cur.end], [19, 25], 'la semaine en cours est 19→25');
-      near(cur.planned, 30000 * 7 / 13, 'prévu = 300 × 7 / 13');
-      eq(C.formatEuros(cur.planned), C.formatEuros(16154), 'affiché 161,54 €');
-      eq(Math.round(cur.remaining), 16154, 'reste de la semaine = 161,54 €');
+      near(cur.planned, 80000 * 7 / 31, 'prévu = 800 × 7 / 31 (le surplus dépensé avant n\u2019est pas reporté)');
+      eq(Math.round(cur.remaining), 18065, 'reste de la semaine = 180,65 €');
       eq(cur.daysLeftInWeek, 7, '7 jours restants dans la semaine');
-      eq(Math.round(cur.perDay), 2308, 'environ 23,08 € par jour');
+      eq(Math.round(cur.perDay), 2581, 'environ 25,81 € par jour');
       eq(r.remaining, 30000, 'reste du mois = 300 €');
       eq(r.weeks.map((w) => w.status), ['past', 'past', 'past', 'current', 'future'], 'statuts des semaines');
-      near(r.weeks[4].planned, 30000 - 30000 * 7 / 13, 'semaine future = reste après la semaine en cours');
-      const sumPast = r.weeks.slice(0, 3).reduce((s, w) => s + w.spent, 0);
-      eq(sumPast, 50000, 'dépenses des semaines passées = 500 €');
+      near(r.weeks[4].planned, 80000 * 6 / 31, 'semaine future : 800 × 6 / 31');
+      near(r.weeks[0].remaining, 80000 * 4 / 31 - 20000, 'semaine 1→4 : écart = prévu − dépensé');
     });
 
-    describe('Reste réparti : prévu des semaines passées', () => {
-      const expenses = [exp('2026-10-02', 100)];
-      const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-20' });
-      near(r.weeks[0].planned, 80000 * 4 / 31, 'semaine 1 : 800 × 4 / 31');
-      near(r.weeks[1].planned, 70000 * 7 / 27, 'semaine 2 : (800 − 100) × 7 / 27');
-      near(r.weeks[1].remaining, 70000 * 7 / 27, 'semaine 2 : rien dépensé, écart = prévu');
+    describe('Économies non reportées', () => {
+      const r = C.computeMonth({ budget: 80000, expenses: [exp('2026-10-02', 10)], year: 2026, month: 10, today: '2026-10-20' });
+      near(r.weeks[0].remaining, 80000 * 4 / 31 - 1000, 'semaine 1 : économie visible');
+      near(r.weeks[1].planned, 80000 * 7 / 31, 'semaine 2 : prévu inchangé malgré l\u2019économie');
+      near(r.currentWeek.planned, 80000 * 7 / 31, 'semaine en cours : prévu inchangé');
     });
 
     describe('Mois qui commence un lundi (juin 2026)', () => {
@@ -95,13 +92,12 @@
       const r = C.computeMonth({ budget: 80000, expenses, year: 2026, month: 10, today: '2026-10-20' });
       eq(r.remaining, -10000, 'reste du mois = −100 €');
       eq(C.formatEuros(-r.remaining), C.formatEuros(10000), 'dépassement affiché 100,00 €');
-      eq(r.currentWeek.planned, 0, 'semaine en cours : prévu 0 €');
-      eq(r.weeks[4].planned, 0, 'semaine suivante : prévu 0 €');
-      near(r.weeks[2].planned, 20000 * 7 / 20, 'semaine 12→18 : (800 − 600) × 7 / 20 = 70 €');
-      near(r.weeks[2].remaining, 7000 - 30000, 'semaine 12→18 dépassée de 230 €');
+      near(r.weeks[0].remaining, 80000 * 4 / 31 - 60000, 'semaine 1→4 dépassée, visible');
+      near(r.currentWeek.planned, 80000 * 7 / 31, 'le dépassement n\u2019est pas reporté sur la semaine en cours');
+      near(r.weeks[2].remaining, 80000 * 7 / 31 - 30000, 'semaine 12→18 dépassée');
 
-      const r2 = C.computeMonth({ budget: 80000, expenses: [exp('2026-10-05', 500), exp('2026-10-19', 200)], year: 2026, month: 10, today: '2026-10-19' });
-      near(r2.currentWeek.remaining, 30000 * 7 / 13 - 20000, 'semaine en cours dépassée : 161,54 − 200 = −38,46 €');
+      const r2 = C.computeMonth({ budget: 80000, expenses: [exp('2026-10-19', 200)], year: 2026, month: 10, today: '2026-10-19' });
+      near(r2.currentWeek.remaining, 80000 * 7 / 31 - 20000, 'semaine en cours dépassée : 180,65 − 200 = −19,35 €');
       eq(r2.currentWeek.remaining < 0, true, 'resteSemaine < 0');
     });
 

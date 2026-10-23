@@ -85,10 +85,10 @@
   /**
    * Calcule le résumé d'un mois et le budget de chaque semaine.
    *
-   * Semaines passées et en cours : formule exacte du brief
-   *   prévu(S) = max(0, budget − dépenses avant S) × joursDeS / joursRestants(S)
-   * Semaines futures (estimation) : on suppose que la semaine précédente
-   * consomme au moins son prévu, puis le reste est réparti de la même façon.
+   * Budget fixe par semaine, sans report :
+   *   prévu(S) = budget × joursDeS / joursDuMois
+   * Les économies ou dépassements d'une semaine sont visibles (écart = prévu − dépensé)
+   * mais ne modifient pas le prévu des semaines suivantes.
    */
   function computeMonth({ budget, expenses, year, month, today }) {
     const dim = daysInMonth(year, month);
@@ -101,8 +101,6 @@
     const isCurrentMonth = viewIdx === todayIdx;
     const todayDay = isCurrentMonth ? t.d : null;
 
-    let rest = budget;
-    let daysLeft = dim;
     let currentWeek = null;
 
     const weeks = getWeeks(year, month).map((w, index) => {
@@ -116,19 +114,15 @@
       let wSpent = 0;
       for (let d = w.start; d <= w.end; d++) wSpent += byDay[d].total;
 
-      const planned = Math.max(0, rest) * w.days / daysLeft;
+      const planned = budget * w.days / dim;
       const week = {
         ...w,
         index,
         status,
-        restAtStart: rest,
         planned,
         spent: wSpent,
         remaining: planned - wSpent,
       };
-
-      rest -= status === 'past' ? wSpent : Math.max(planned, wSpent);
-      daysLeft -= w.days;
 
       if (status === 'current') {
         week.daysLeftInWeek = w.end - todayDay + 1;

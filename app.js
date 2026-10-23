@@ -179,7 +179,7 @@
       return `
         <li class="week future">
           <span class="dates">${dates}</span>
-          <span class="main num">≈ ${fmt(w.planned)}</span>
+          <span class="main num">${fmt(w.planned)}</span>
           <span class="detail">${w.spent ? fmt(w.spent) + ' déjà saisis' : ''}</span>
           <span class="detail right">prévu</span>
         </li>`;

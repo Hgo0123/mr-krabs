@@ -93,14 +93,12 @@ Un rappel s'affiche dans les Réglages si le dernier export date de plus de 30 j
 
 - Les montants sont stockés en centimes entiers ; l'arrondi ne se fait qu'à l'affichage.
 - Les semaines vont du lundi au dimanche, coupées aux limites du mois.
-- Budget prévu d'une semaine S :
-  `max(0, budget − dépenses avant S) × jours de S / jours restants du mois`.
+- Budget prévu d'une semaine S (fixe) : `budget du mois × jours de S / jours du mois`.
+- **Pas de report** : ce qui est économisé ou dépassé une semaine s'affiche
+  (`+129,00 €` en vert, `−57,00 €` en rouge) mais ne change pas le budget des
+  semaines suivantes.
 - Semaine en cours : reste = prévu − dépenses de la semaine ; par jour = reste / jours
   restants dans la semaine (aujourd'hui compris).
-- Semaines futures (estimation) : on considère que la semaine en cours consomme
-  au moins son prévu (ou ce qui est déjà dépensé s'il est plus élevé), puis le
-  reste est réparti de la même façon. La somme des prévus du mois retombe ainsi
-  toujours sur le budget.
 
 ## Format des données
 
