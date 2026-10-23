@@ -1,6 +1,6 @@
 /* Service worker : met en cache tous les fichiers de l'appli (cache first).
    Incrémenter VERSION à chaque déploiement pour forcer la mise à jour. */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `budget-${VERSION}`;
 const FILES = [
   './',
